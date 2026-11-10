@@ -1,27 +1,43 @@
-# Teams audio notification relay
+# Teams音声通知中継プログラム
 
-This PowerShell 5.1 utility watches audio sessions from Teams and its child processes on every active Windows playback device. It sends short sound events to the ntfy topic configured in `setting.txt`; it does not read Teams messages or identify their senders.
+Windows上のTeamsとその子プロセスの音声セッションを監視し、短い音を検出するとntfyへ通知するPowerShell 5.1用プログラムです。Teamsのメッセージ本文や送信者は取得しません。
 
-## Configure
+## 必要な環境
 
-Edit `setting.txt` as UTF-8 before starting:
+- Windowsのサインイン済みデスクトップセッション
+- Windows PowerShell 5.1
+- 1つ以上の有効な音声出力デバイス
+- ntfy.shへのHTTPS接続
+
+追加のPowerShellモジュール、Graph API、サービス登録、自動起動設定は不要です。
+
+## 設定
+
+起動前に、同じフォルダーにある`setting.txt`をUTF-8で編集します。
 
 ```text
 topicname = your-ntfy-topic
 pcname = your-device-name
 ```
 
-Both values are required. `topicname` selects the ntfy topic and is URL-escaped when building the request URL. `pcname` is included in notification text. The checked-in values are examples and should be replaced with the values for your setup.
+`topicname`は通知先のntfyトピック名、`pcname`は通知本文に表示する端末名です。どちらも必須です。公開リポジトリの値は例なので、利用者自身の値に置き換えてください。トピック名はURLのパス要素としてエスケープされます。
 
-## Run and stop
+## 起動と停止
 
-Double-click `start_notification_watcher.bat` to start. Use `stop_notification_watcher.bat` for a cooperative stop. You can also run the script with `-Diagnose`, `-NoSend`, `-DurationSeconds <seconds>`, or `-Threshold <0.0001..1.0>`. `-Stop` requests cooperative shutdown; `-NoSend` suppresses all HTTP requests.
+`start_notification_watcher.bat`を実行すると監視を開始します。`stop_notification_watcher.bat`を実行すると、停止イベントを使って協調停止します。監視画面で`Ctrl+C`を押して終了することもできます。
 
-Start, short-sound Received, and Stop events are posted to `https://ntfy.sh/<topicname>`, where `<topicname>` comes from `setting.txt`. Messages use UTF-8, priority 5 (maximum), and Japan Standard Time timestamps. Successful sends and HTTP failures are reported in the console; failed requests are not retried.
+スクリプトは次の引数を受け付けます。
 
-## Detection behavior and limits
+- `-Diagnose`：検出ピークと対象セッション数を表示
+- `-NoSend`：HTTP送信を行わずに監視
+- `-DurationSeconds <秒>`：指定秒数だけ監視（0は無期限）
+- `-Threshold <0.0001..1.0>`：音ありと判定するピーク閾値（既定値`0.02`）
+- `-Stop`：協調停止を要求
 
-The default threshold is 0.02. A sound interval closes after 500 ms without a threshold-level sample; intervals up to 1800 ms generate one Received event. These values are retained from the previous implementation because the OCR-restored design text does not reliably show their intended values. Detection is based on sampled session peak levels, not recorded audio. Silent notifications cannot be detected, and other short Teams audio can trigger a notification.
+## 通知と音の判定
 
-The watcher requires a signed-in Windows desktop session and access to at least one active output device. It does not install a service, configure autostart, use Graph API, record audio, or save audio files.
+開始、短音検出、停止の各イベントを`https://ntfy.sh/<topicname>`へ送信します。`<topicname>`は`setting.txt`の値です。本文はUTF-8、優先度は最高の5、時刻は日本標準時です。送信成功と失敗はコンソールに表示され、失敗時の再送はありません。
 
+音声は録音せず、各音声セッションのピーク値だけを調べます。既定の閾値は`0.02`、音が途切れて区間を閉じるまでの無音時間は`500ms`、通知対象とする音区間の上限は`1800ms`です。閾値未満の状態が500ms続くと音区間を閉じ、区間長が1800ms以下ならReceived通知を送ります。無音の通知は検出できず、通話などの短い音が通知される場合もあります。
+
+Teams本体と子孫プロセスに属する音声セッションを、すべての有効な出力デバイスから集計します。デバイスへのアクセスに失敗した場合や、対象プロセスを識別できない場合は検出できません。
