@@ -41,9 +41,9 @@ function Send-WatcherNotification([string]$Event) {
     if ($noSendMode) { return }
     $timestamp = [TimeZoneInfo]::ConvertTime([DateTimeOffset]::Now, [TimeZoneInfo]::FindSystemTimeZoneById('Tokyo Standard Time'))
     switch ($Event) {
-        'Start' { $message = "Teams voice watcher Start $($settings.pcname)"; $priority = '3' }
-        'Stop' { $message = "Teams voice watcher Stop $($settings.pcname) $($timestamp.ToString('yyyy-MM-dd HH:mm:ss zzz'))"; $priority = '3' }
-        'Received' { $message = "Teams voice watcher Received from $($settings.pcname) $($timestamp.ToString('yyyy-MM-dd HH:mm:ss zzz'))"; $priority = '5' }
+        'Start' { $message = "Teams voice watcher Start [$($settings.pcname)]"; $priority = '3' }
+        'Stop' { $message = "Teams voice watcher Stop [$($settings.pcname)] $($timestamp.ToString('yyyy-MM-dd HH:mm:ss zzz'))"; $priority = '3' }
+        'Received' { $message = "Teams voice watcher Received from [$($settings.pcname)] $($timestamp.ToString('yyyy-MM-dd HH:mm:ss zzz'))"; $priority = '5' }
         default { throw "Unsupported notification event: $Event" }
     }
     $topicPath = [Uri]::EscapeDataString([string]$settings.topicname)
