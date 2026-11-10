@@ -6,6 +6,7 @@ namespace TeamsAudioRelay {
     public sealed class SessionPeak {
         public uint ProcessId { get; set; }
         public float Peak { get; set; }
+        public string DeviceId { get; set; }
     }
 
     public static class AudioSessions {
@@ -18,11 +19,17 @@ namespace TeamsAudioRelay {
 
         [ComImport, Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
         private interface IMMDeviceEnumerator {
-            [PreserveSig] int EnumAudioEndpoints(DataFlow flow, uint stateMask, out IntPtr devices);
+            [PreserveSig] int EnumAudioEndpoints(DataFlow flow, uint stateMask, out IMMDeviceCollection devices);
             [PreserveSig] int GetDefaultAudioEndpoint(DataFlow flow, Role role, out IMMDevice device);
             [PreserveSig] int GetDevice([MarshalAs(UnmanagedType.LPWStr)] string id, out IMMDevice device);
             [PreserveSig] int RegisterEndpointNotificationCallback(IntPtr callback);
             [PreserveSig] int UnregisterEndpointNotificationCallback(IntPtr callback);
+        }
+
+        [ComImport, Guid("0BD7A1BE-7A1A-44DB-8397-CC5392387B5E"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        private interface IMMDeviceCollection {
+            [PreserveSig] int GetCount(out uint count);
+            [PreserveSig] int Item(uint index, out IMMDevice device);
         }
 
         [ComImport, Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
@@ -110,6 +117,78 @@ namespace TeamsAudioRelay {
             }
         }
 
+        public static SessionPeak[] ReadAllRenderSessions() {
+            IMMDeviceEnumerator enumerator = null;
+            object enumeratorObject = null;
+            IMMDeviceCollection devices = null;
+            var result = new List<SessionPeak>();
+            int readableDevices = 0;
+            try {
+                enumeratorObject = new EnumeratorComObject();
+                enumerator = (IMMDeviceEnumerator)enumeratorObject;
+                Check(enumerator.EnumAudioEndpoints(DataFlow.Render, 1, out devices));
+                uint count;
+                Check(devices.GetCount(out count));
+                for (uint i = 0; i < count; i++) {
+                    IMMDevice device = null;
+                    try {
+                        Check(devices.Item(i, out device));
+                        IntPtr idPointer = IntPtr.Zero;
+                        string deviceId = null;
+                        try {
+                            Check(device.GetId(out idPointer));
+                            deviceId = Marshal.PtrToStringUni(idPointer);
+                        } finally {
+                            if (idPointer != IntPtr.Zero) Marshal.FreeCoTaskMem(idPointer);
+                        }
+                        result.AddRange(ReadDeviceSessions(device, deviceId));
+                        readableDevices++;
+                    } catch (COMException) { }
+                    finally {
+                        if (device != null && Marshal.IsComObject(device)) Marshal.ReleaseComObject(device);
+                    }
+                }
+                if (readableDevices == 0) throw new InvalidOperationException("No active render device could be read.");
+                return result.ToArray();
+            } finally {
+                if (devices != null && Marshal.IsComObject(devices)) Marshal.ReleaseComObject(devices);
+                if (enumerator != null && Marshal.IsComObject(enumerator)) Marshal.ReleaseComObject(enumerator);
+                if (enumeratorObject != null && Marshal.IsComObject(enumeratorObject)) Marshal.ReleaseComObject(enumeratorObject);
+            }
+        }
+
+        private static SessionPeak[] ReadDeviceSessions(IMMDevice device, string deviceId) {
+            IAudioSessionManager2 manager = null;
+            IAudioSessionEnumerator sessions = null;
+            var result = new List<SessionPeak>();
+            try {
+                Guid managerIid = typeof(IAudioSessionManager2).GUID;
+                object managerObject;
+                Check(device.Activate(ref managerIid, ClsContext.All, IntPtr.Zero, out managerObject));
+                manager = (IAudioSessionManager2)managerObject;
+                Check(manager.GetSessionEnumerator(out sessions));
+                int count;
+                Check(sessions.GetCount(out count));
+                for (int i = 0; i < count; i++) {
+                    IAudioSessionControl session = null;
+                    try {
+                        if (sessions.GetSession(i, out session) != 0 || session == null) continue;
+                        uint processId;
+                        float peak;
+                        if (TryReadSession(session, out processId, out peak))
+                            result.Add(new SessionPeak { ProcessId = processId, Peak = peak, DeviceId = deviceId });
+                    } catch { }
+                    finally {
+                        if (session != null && Marshal.IsComObject(session)) Marshal.ReleaseComObject(session);
+                    }
+                }
+                return result.ToArray();
+            } finally {
+                if (sessions != null && Marshal.IsComObject(sessions)) Marshal.ReleaseComObject(sessions);
+                if (manager != null && Marshal.IsComObject(manager)) Marshal.ReleaseComObject(manager);
+            }
+        }
+
         private static bool TryReadSession(IAudioSessionControl session, out uint processId, out float peak) {
             processId = 0;
             peak = 0;
@@ -141,3 +220,5 @@ namespace TeamsAudioRelay {
         }
     }
 }
+
+

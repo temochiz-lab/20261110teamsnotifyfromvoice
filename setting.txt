@@ -1,0 +1,2 @@
+topicname = your-ntfy-topic
+pcname = your-device-name
