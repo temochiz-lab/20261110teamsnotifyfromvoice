@@ -41,14 +41,14 @@ function Send-WatcherNotification([string]$Event) {
     if ($noSendMode) { return }
     $timestamp = [TimeZoneInfo]::ConvertTime([DateTimeOffset]::Now, [TimeZoneInfo]::FindSystemTimeZoneById('Tokyo Standard Time'))
     switch ($Event) {
-        'Start' { $message = "Teams voice watcher Start $($settings.pcname)" }
-        'Stop' { $message = "Teams voice watcher Stop $($settings.pcname) $($timestamp.ToString('yyyy-MM-dd HH:mm:ss zzz'))" }
-        'Received' { $message = "Teams voice watcher Received from $($settings.pcname) $($timestamp.ToString('yyyy-MM-dd HH:mm:ss zzz'))" }
+        'Start' { $message = "Teams voice watcher Start $($settings.pcname)"; $priority = '3' }
+        'Stop' { $message = "Teams voice watcher Stop $($settings.pcname) $($timestamp.ToString('yyyy-MM-dd HH:mm:ss zzz'))"; $priority = '3' }
+        'Received' { $message = "Teams voice watcher Received from $($settings.pcname) $($timestamp.ToString('yyyy-MM-dd HH:mm:ss zzz'))"; $priority = '5' }
         default { throw "Unsupported notification event: $Event" }
     }
     $topicPath = [Uri]::EscapeDataString([string]$settings.topicname)
     try {
-        Invoke-RestMethod -Uri "https://ntfy.sh/$topicPath" -Method Post -Headers @{ Priority = '5' } -ContentType 'text/plain; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($message)) -TimeoutSec 15 | Out-Null
+        Invoke-RestMethod -Uri "https://ntfy.sh/$topicPath" -Method Post -Headers @{ Priority = $priority } -ContentType 'text/plain; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($message)) -TimeoutSec 15 | Out-Null
         Write-Host "ntfy $Event notification sent to topic $($settings.topicname)."
     } catch { Write-Warning "Could not send ntfy $Event notification to topic $($settings.topicname): $($_.Exception.Message)" }
 }
